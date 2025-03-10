@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+import time
 from typing import List
 
 import click
@@ -17,52 +19,53 @@ from src.l3c import timer
 
 
 def setup_device():
-    """ Thiết lập GPU, sử dụng DataParallel nếu có nhiều GPU """
+    """ Thiết lập GPU hoặc CPU """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    num_gpus = torch.cuda.device_count()
-    
-    print(f"✅ Available GPUs: {num_gpus}")
-    for i in range(num_gpus):
-        print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
-
-    return device, num_gpus
+    print(f"✅ Using device: {device}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+    return device
 
 
 def train_loop(
         x: torch.Tensor, compressor: nn.Module,
-        optimizer: optim.Optimizer,
-        train_iter: int, plotter: tensorboard.SummaryWriter,
-        plot_iters: int, clip: float, batch_idx: int, save_probs_path: str
-) -> None:
-    """ Training loop cho 1 batch và lưu `probs` nếu cần """
+        optimizer: optim.Optimizer, train_iter: int,
+        plotter: tensorboard.SummaryWriter, plot_iters: int,
+        clip: float, batch_idx: int, save_probs_path: str
+) -> float:
+    """ Training loop cho 1 batch và lưu `probs` vào JSON """
     compressor.train()
     optimizer.zero_grad()
     inp_size = np.prod(x.size())
 
-    # 🔥 Chắc chắn dữ liệu chạy trên GPU
-    x = x.to(next(compressor.parameters()).device)  
+    # 🔥 Chuyển dữ liệu lên GPU hoặc CPU
+    x = x.to(next(compressor.parameters()).device)
 
-    # Chạy model trên GPU
+    # Chạy model
     bits = compressor(x)
-    if isinstance(bits, torch.Tensor):  # Nếu model đang chạy DataParallel
-        bits = bits[0]  # Lấy object Bits đầu tiên
 
+    # ✅ Lưu `probs` vào file JSON
+    batch_data = {}
+    for img_idx, (img, prob_data) in enumerate(bits.probs):
+        batch_data[f"img_{img_idx}"] = prob_data.cpu().tolist()
 
-    # Lưu probs cho từng ảnh trong batch
-    for img_idx, prob_data in enumerate(bits.probs):
-        img_filename = os.path.join(save_probs_path, f"train_iter_{train_iter}_batch_{batch_idx}_img_{img_idx}.pt")
-        torch.save(prob_data, img_filename)
+    json_filename = os.path.join(save_probs_path, f"train_iter_{train_iter}_batch_{batch_idx}.json")
+    with open(json_filename, "w") as f:
+        json.dump(batch_data, f, indent=4)
+
+    print(f"✅ Đã lưu {json_filename}")
 
     # Tính loss và cập nhật weights
     total_loss = bits.get_total_bpsp(inp_size)
     total_loss.backward()
-    grad_norm = nn.utils.clip_grad_norm_(compressor.parameters(), clip)
+    nn.utils.clip_grad_norm_(compressor.parameters(), clip)
     optimizer.step()
 
-    # Chỉ log mỗi `plot_iters` lần để tránh log quá nhiều
+    # Logging loss sau mỗi `plot_iters`
     if train_iter % plot_iters == 0:
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
-        plotter.add_scalar("train/grad_norm", grad_norm, train_iter)
+
+    return total_loss.item()
 
 
 @click.command()
@@ -76,7 +79,7 @@ def train_loop(
               help="file for eval image names.")
 @click.option("--batch", type=int, help="Batch size for training.")
 @click.option("--workers", type=int, default=2,
-              help="Number of worker threads to use in dataloader.")  # 🚀 Tăng workers nếu cần
+              help="Number of worker threads to use in dataloader.")
 @click.option("--plot", type=str,
               help="path to store tensorboard run data/plots.")
 @click.option("--epochs", type=int, default=50, show_default=True,
@@ -103,7 +106,7 @@ def train_loop(
 @click.option("--crop", type=int, default=128,
               help="Size of image crops in training.")
 @click.option("--gd", type=click.Choice(["sgd", "adam", "rmsprop"]), default="adam",
-              help="Type of gd to use.")
+              help="Type of gradient descent optimizer.")
 @click.option("--verbose", is_flag=True, default=False,
               help="Print detailed logs if enabled.")
 
@@ -118,13 +121,11 @@ def main(
     """ Main training function """
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-    # Setup GPU
-    device, num_gpus = setup_device()
+    # Setup device
+    device = setup_device()
 
     # Cấu hình model
-    compressor = network.Compressor()
-
-    compressor = compressor.to(device)  # Đưa model lên GPU
+    compressor = network.Compressor().to(device)
 
     # Setup optimizer
     optimizer: optim.Optimizer
@@ -137,7 +138,6 @@ def main(
     else:
         raise NotImplementedError(gd)
 
-    # Setup DataLoader (Không dùng DistributedSampler)
     train_dataset = lc_data.ImageFolder(
         train_path,
         [filename.strip() for filename in train_file],
@@ -146,17 +146,26 @@ def main(
     )
 
     train_loader = data.DataLoader(
-        train_dataset, batch_size=batch, shuffle=True,  # ✅ Không dùng sampler
+        train_dataset, batch_size=batch, shuffle=True,
         num_workers=workers, drop_last=True, pin_memory=True
     )
 
     # Training loop
     train_iter = 0
     for epoch in range(epochs):
+        epoch_loss = 0.0
+        start_time = time.time()
+
         with tensorboard.SummaryWriter(plot) as plotter:
             for batch_idx, (_, inputs) in enumerate(train_loader):
                 train_iter += 1
-                train_loop(inputs, compressor, optimizer, train_iter, plotter, plot_iters, clip, batch_idx, plot)
+                batch_loss = train_loop(inputs, compressor, optimizer, train_iter, plotter, plot_iters, clip, batch_idx, plot)
+                epoch_loss += batch_loss
+
+        # Log loss trung bình sau mỗi epoch
+        avg_loss = epoch_loss / len(train_loader)
+        print(f"📌 Epoch {epoch + 1}/{epochs} - Avg Loss: {avg_loss:.4f} - Time: {time.time() - start_time:.2f}s")
+        plotter.add_scalar("train/epoch_loss", avg_loss, epoch + 1)
 
     print("✅ Training complete")
 
