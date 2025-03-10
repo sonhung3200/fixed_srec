@@ -59,6 +59,11 @@ class Bits:
         self.probs += other.probs
         return self
 
+    def get_keys(self):
+        """Trả về danh sách các keys trong `key_to_bits`"""
+        return self.key_to_bits.keys()
+
+
 
 
 class PixDecoder(nn.Module):
