@@ -123,10 +123,6 @@ def main(
 
     # Cấu hình model
     compressor = network.Compressor()
-    
-    # 🔥 Nếu có nhiều GPU, sử dụng DataParallel
-    if num_gpus > 1:
-        compressor = nn.DataParallel(compressor)
 
     compressor = compressor.to(device)  # Đưa model lên GPU
 
