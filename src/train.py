@@ -49,7 +49,7 @@ def train_loop(
 
 
     # Lưu probs cho từng ảnh trong batch
-    for img_idx, (img, prob_data) in enumerate(bits.probs):
+    for img_idx, prob_data in enumerate(bits.probs):
         img_filename = os.path.join(save_probs_path, f"train_iter_{train_iter}_batch_{batch_idx}_img_{img_idx}.pt")
         torch.save(prob_data, img_filename)
 
