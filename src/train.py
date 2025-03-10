@@ -1,8 +1,5 @@
 import os
 import sys
-import json
-import time
-import logging
 from typing import List
 
 import click
@@ -18,71 +15,168 @@ from src import data as lc_data
 from src import network
 from src.l3c import timer
 
-# Thiết lập logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+import json
+import os
+
+def save_collect_probs(probs, train_iter, save_path="collect_probs.json"):
+    """ Save collected probabilities to a JSON file. """
+    formatted_probs = []
+    
+    for y_i, lm_probs, levels in probs:
+        if lm_probs is not None:
+            formatted_probs.append({
+                "name": lm_probs.name,
+                "pixel_index": lm_probs.pixel_index,
+                "probs": lm_probs.probs.tolist(),  # Convert tensor to list
+                "lower": lm_probs.lower.tolist(),
+                "upper": lm_probs.upper.tolist()
+            })
+        else:
+            formatted_probs.append({
+                "uniform_distribution": True,
+                "levels": levels,
+                "values": y_i.tolist()
+            })
+
+    save_data = {
+        "train_iter": train_iter,
+        "collected_probs": formatted_probs
+    }
+
+    # Append to JSON file
+    if os.path.exists(save_path):
+        with open(save_path, "r") as file:
+            existing_data = json.load(file)
+        existing_data.append(save_data)
+    else:
+        existing_data = [save_data]
+
+    with open(save_path, "w") as file:
+        json.dump(existing_data, file, indent=4)
 
 
-def plot_bpsp(plotter, bits, inp_size, train_iter):
-    """ Vẽ BPSP trên TensorBoard """
+def plot_bpsp(
+        plotter: tensorboard.SummaryWriter, bits: network.Bits,
+        inp_size: int, train_iter: int
+) -> None:
+    """ Plot bpsps for all keys on tensorboard.
+        bpsp: bits per subpixel/bits per dimension
+        There are 2 bpsps per key:
+        self_bpsp: bpsp based on dimension of log-likelihood tensor.
+            Measures bits if log-likelihood tensor is final scale.
+        scaled_bpsp: bpsp based on dimension of original image.
+            Measures how many bits we contribute to the total bpsp.
+
+        param plotter: tensorboard logger
+        param bits: bpsp aggregator
+        param inp_size: product of dims of original image
+        param train_iter: current training iteration
+        returns: None
+    """
     for key in bits.get_keys():
-        plotter.add_scalar(f"{key}_self_bpsp", bits.get_self_bpsp(key).item(), train_iter)
-        plotter.add_scalar(f"{key}_scaled_bpsp", bits.get_scaled_bpsp(key, inp_size).item(), train_iter)
+        plotter.add_scalar(
+            f"{key}_self_bpsp", bits.get_self_bpsp(key).item(), train_iter)
+        plotter.add_scalar(
+            f"{key}_scaled_bpsp",
+            bits.get_scaled_bpsp(key, inp_size).item(), train_iter)
 
 
-def train_epoch(train_loader, compressor, optimizer, plotter, plot_iters, clip, epoch):
-    """ Huấn luyện 1 epoch """
+def train_loop(
+        x: torch.Tensor, compressor: nn.Module,
+        optimizer: optim.Optimizer,
+        train_iter: int, plotter: tensorboard.SummaryWriter,
+        plot_iters: int, clip: float,
+) -> None:
     compressor.train()
-    total_loss = 0
-    total_batches = len(train_loader)
-    start_time = time.time()
+    optimizer.zero_grad()
+    inp_size = np.prod(x.size())
+    x = x.cuda()
+    bits = compressor(x)
+    total_loss = bits.get_total_bpsp(inp_size)
+    total_loss.backward()
+    grad_norm = nn.utils.clip_grad_norm_(compressor.parameters(), clip)
+    optimizer.step()
 
-    for batch_idx, (filenames, x) in enumerate(train_loader):
-        optimizer.zero_grad()
-        x = x.cuda()
-        inp_size = np.prod(x.size())
+    # Save collect_probs if enabled
+    if configs.collect_probs:
+        save_collect_probs(bits.probs, train_iter)
 
-        bits = compressor(x, filenames)  # Lưu xác suất khi cần
-        loss = bits.get_total_bpsp(inp_size)
-        loss.backward()
-        nn.utils.clip_grad_norm_(compressor.parameters(), clip)
-        optimizer.step()
-
-        total_loss += loss.item()
-
-        # Hiển thị log mỗi `plot_iters` batch
-        if batch_idx % plot_iters == 0:
-            plotter.add_scalar("train/bpsp", loss.item(), epoch * total_batches + batch_idx)
-            logging.info(f"Epoch {epoch} | Batch {batch_idx}/{total_batches} | Loss: {loss.item():.4f}")
-
-    avg_loss = total_loss / total_batches
-    end_time = time.time()
-    logging.info(f"✅ Epoch {epoch} completed in {end_time - start_time:.2f}s - Avg Loss: {avg_loss:.4f}")
-    return avg_loss
+    if train_iter % plot_iters == 0:
+        plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
+        plotter.add_scalar("train/grad_norm", grad_norm, train_iter)
+        plot_bpsp(plotter, bits, inp_size, train_iter)
 
 
-def evaluate(eval_loader, compressor, plotter, epoch):
-    """ Chạy đánh giá trên tập validation """
+def run_eval(
+        eval_loader: data.DataLoader, compressor: nn.Module,
+        train_iter: int, plotter: tensorboard.SummaryWriter,
+        epoch: int,
+) -> None:
+    """ Runs entire eval epoch. """
+    time_accumulator = timer.TimeAccumulator()
     compressor.eval()
-    total_loss = 0
     inp_size = 0
-    total_batches = len(eval_loader)
-    start_time = time.time()
 
     with torch.no_grad():
+        # BitsKeeper is used to aggregates bits from all eval iterations.
         bits_keeper = network.Bits()
-        for filenames, x in eval_loader:
-            x = x.cuda()
+        for _, x in eval_loader:
             inp_size += np.prod(x.size())
-            bits = compressor(x, filenames)
+            with time_accumulator.execute():
+                x = x.cuda()
+                bits = compressor(x)
             bits_keeper.add_bits(bits)
 
-        total_bpsp = bits_keeper.get_total_bpsp(inp_size).item()
-        plotter.add_scalar("eval/bpsp", total_bpsp, epoch)
-        logging.info(f"🔍 Validation Epoch {epoch} - BPSP: {total_bpsp:.4f}")
+        total_bpsp = bits_keeper.get_total_bpsp(inp_size)
 
-    end_time = time.time()
-    logging.info(f"✅ Evaluation completed in {end_time - start_time:.2f}s")
-    return total_bpsp
+        eval_bpsp = total_bpsp.item()
+        print(f"Iteration {train_iter} bpsp: {total_bpsp}")
+        plotter.add_scalar(
+            "eval/bpsp", eval_bpsp, train_iter)
+        plotter.add_scalar(
+            "eval/batch_time", time_accumulator.mean_time_spent(), train_iter)
+        plot_bpsp(plotter, bits_keeper, inp_size, train_iter)
+
+        if configs.best_bpsp > eval_bpsp:
+            configs.best_bpsp = eval_bpsp
+            torch.save(
+                {"nets": compressor.nets.state_dict(),  # type: ignore
+                 "best_bpsp": configs.best_bpsp,
+                 "epoch": epoch},
+                os.path.join(configs.plot, "best.pth"))
+
+
+def save(compressor: network.Compressor,
+         sampler_indices: List[int],
+         index: int,
+         epoch: int,
+         train_iter: int,
+         plot: str,
+         filename: str) -> None:
+    """ Checkpoints training such that the entire training state
+        can be restored. Reason we need this is because condor
+        cluster can preempt jobs.
+
+        param compressor: Contains all of our networks.
+        param sampler_indices: Random indices of dataset
+            produced by our Sampler, which prevents us from having
+            unbalanced sampling of our dataset when restoring. Important 
+            because our number of epochs is low.
+        param index: Current index of indices in Sampler. Tells which 
+            part of dataset is sampled and which part is not.
+        param train_iter: Train iteration at which model is last trained.
+        param epoch: Current training epoch. 
+        param plot: Directory to store checkpoint.
+        param filename: Checkpoint filename.
+    """
+    torch.save({
+        "nets": compressor.nets.state_dict(),
+        "sampler_indices": sampler_indices,
+        "index": index,
+        "epoch": epoch,
+        "train_iter": train_iter,
+        "best_bpsp": configs.best_bpsp,
+    }, os.path.join(plot, filename))
 
 
 @click.command()
@@ -135,49 +229,131 @@ def main(
 ) -> None:
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-    # Cấu hình logging và TensorBoard
-    logging.info("🚀 Starting training...")
-    
-    configs.plot = plot  # ✅ Gán giá trị plot vào configs
-    os.makedirs(configs.plot, exist_ok=True)
-    plotter = tensorboard.SummaryWriter(configs.plot)
+    configs.n_feats = n_feats
+    configs.scale = scale
+    configs.resblocks = resblocks
+    configs.K = k
+    configs.plot = plot
 
-    # Load dataset
+    print(sys.argv)
+
+    os.makedirs(plot, exist_ok=True)
+    model_load = os.path.join(plot, "train.pth")
+    if os.path.isfile(model_load):
+        load = model_load
+    if os.path.isfile(load) and load != "/dev/null":
+        checkpoint = torch.load(load)
+        print(f"Loaded model from {load}.")
+        print("Epoch:", checkpoint["epoch"])
+        if checkpoint.get("best_bpsp") is None:
+            print("Warning: best_bpsp not found!")
+        else:
+            configs.best_bpsp = checkpoint["best_bpsp"]
+            print("Best bpsp:", configs.best_bpsp)
+    else:
+        checkpoint = {}
+
+    compressor = network.Compressor()
+    if checkpoint:
+        compressor.nets.load_state_dict(checkpoint["nets"])
+    compressor = compressor.cuda()
+
+    optimizer: optim.Optimizer  # type: ignore
+    if gd == "adam":
+        optimizer = optim.Adam(compressor.parameters(), lr=lr, weight_decay=0)
+    elif gd == "sgd":
+        optimizer = optim.SGD(compressor.parameters(), lr=lr,
+                              momentum=0.9, nesterov=True)
+    elif gd == "rmsprop":
+        optimizer = optim.RMSprop(  # type: ignore
+            compressor.parameters(), lr=lr)
+    else:
+        raise NotImplementedError(gd)
+
+    starting_epoch = checkpoint.get("epoch") or 0
+
+    print(compressor)
+
     train_dataset = lc_data.ImageFolder(
-        train_path, [filename.strip() for filename in train_file],
-        configs.scale,
-        T.Compose([T.RandomHorizontalFlip(), T.RandomCrop(128)]),
+        train_path,
+        [filename.strip() for filename in train_file],
+        scale,
+        T.Compose([
+            T.RandomHorizontalFlip(),
+            T.RandomCrop(crop),
+        ]),
     )
-    train_loader = data.DataLoader(train_dataset, batch_size=batch, shuffle=True, num_workers=2, drop_last=True)
-
+    dataset_index = checkpoint.get("index") or 0
+    train_sampler = lc_data.PreemptiveRandomSampler(
+        checkpoint.get("sampler_indices") or torch.randperm(
+            len(train_dataset)).tolist(),
+        dataset_index,
+    )
+    train_loader = data.DataLoader(
+        train_dataset, batch_size=batch, sampler=train_sampler,
+        num_workers=workers, drop_last=True,
+    )
+    print(f"Loaded training dataset with {len(train_loader)} batches "
+          f"and {len(train_loader.dataset)} images")
     eval_dataset = lc_data.ImageFolder(
         eval_path, [filename.strip() for filename in eval_file],
-        configs.scale,
+        scale,
         T.Lambda(lambda x: x),
     )
-    eval_loader = data.DataLoader(eval_dataset, batch_size=1, shuffle=False, num_workers=2, drop_last=False)
+    eval_loader = data.DataLoader(
+        eval_dataset, batch_size=1, shuffle=False,
+        num_workers=workers, drop_last=False,
+    )
+    print(f"Loaded eval dataset with {len(eval_loader)} batches "
+          f"and {len(eval_dataset)} images")
 
-    # Khởi tạo mô hình và optimizer
-    compressor = network.Compressor().cuda()
-    optimizer = optim.Adam(compressor.parameters(), lr=lr)
+    lr_scheduler = optim.lr_scheduler.StepLR(
+        optimizer, lr_epochs, gamma=0.75)
 
-    # Lặp qua các epoch
-    for epoch in range(epochs):
-        avg_train_loss = train_epoch(train_loader, compressor, optimizer, plotter, plot_iters, clip, epoch)
-        eval_bpsp = evaluate(eval_loader, compressor, plotter, epoch)
+    for _ in range(starting_epoch):
+        lr_scheduler.step()  # type: ignore
 
-        # Lưu mô hình nếu tốt nhất
-        if configs.best_bpsp > eval_bpsp:
-            configs.best_bpsp = eval_bpsp
-            torch.save({
-                "nets": compressor.nets.state_dict(),
-                "best_bpsp": configs.best_bpsp,
-                "epoch": epoch,
-            }, os.path.join(configs.plot, "best.pth"))
-            logging.info(f"🎯 New best model saved at epoch {epoch} with BPSP {eval_bpsp:.4f}")
+    train_iter = checkpoint.get("train_iter") or 0
+    if eval_iters == 0:
+        eval_iters = len(train_loader)
 
-    logging.info("🏁 Training complete!")
+    for epoch in range(starting_epoch, epochs):
+        with tensorboard.SummaryWriter(plot) as plotter:
+            # input: List[Tensor], downsampled images.
+            # sizes: N scale 4
+            for _, inputs in train_loader:
+                train_iter += 1
+                batch_size = inputs[0].shape[0]
 
+                train_loop(inputs, compressor, optimizer, train_iter,
+                           plotter, plot_iters, clip)
+                # Increment dataset_index before checkpointing because
+                # dataset_index is starting index of index of the FIRST
+                # unseen piece of data.
+                dataset_index += batch_size
+
+                if train_iter % plot_iters == 0:
+                    plotter.add_scalar(
+                        "train/lr",
+                        lr_scheduler.get_lr()[0],  # type: ignore
+                        train_iter)
+                    save(compressor, train_sampler.indices, dataset_index,
+                         epoch, train_iter, plot, "train.pth")
+
+                if train_iter % eval_iters == 0:
+                    run_eval(
+                        eval_loader, compressor, train_iter,
+                        plotter, epoch)
+
+            lr_scheduler.step()  # type: ignore
+            dataset_index = 0
+
+    with tensorboard.SummaryWriter(plot) as plotter:
+        run_eval(eval_loader, compressor, train_iter,
+                 plotter, epochs)
+    save(compressor, train_sampler.indices, train_sampler.index,
+         epochs, train_iter, plot, "train.pth")
+    print("training done")
 
 
 if __name__ == "__main__":
