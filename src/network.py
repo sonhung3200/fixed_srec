@@ -64,7 +64,8 @@ class PixDecoder(nn.Module):
         mode = "train" if self.training else "eval"
         deltas = x - util.tensor_round(x)
         bits.add_with_size(f"{mode}/{self.scale}_rounding",
-                           quantizer.to_sym(deltas, x_min=-0.25, x_max=0.5, L=4), levels=4)
+                   np.log(4) * np.prod(deltas.size()), 
+                   np.prod(deltas.size()))
 
         _, _, x_h, x_w = x.size()
         if not isinstance(ctx, float):
