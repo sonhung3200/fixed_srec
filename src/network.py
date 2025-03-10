@@ -62,8 +62,14 @@ class Bits:
     def get_keys(self):
         """Trả về danh sách các keys trong `key_to_bits`"""
         return self.key_to_bits.keys()
-
-
+        
+    def add_uniform(self, key: str, y_i: torch.Tensor, levels: int = 256) -> None:
+        """ Thêm giá trị `bits` dựa trên phân phối uniform """
+        if configs.log_likelihood:
+            size = np.prod(y_i.size())
+            nll_sum = np.log(levels) * size
+            self.add_with_size(key, nll_sum, size)
+    
 
 
 class PixDecoder(nn.Module):
