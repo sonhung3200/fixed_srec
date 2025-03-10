@@ -1,5 +1,3 @@
-import os
-import json
 from collections import defaultdict
 from typing import (DefaultDict, Generator, KeysView, List, NamedTuple,
                     Optional, Tuple)
@@ -36,13 +34,14 @@ class Bits:
         self.key_to_bits: DefaultDict[
             str, torch.Tensor] = defaultdict(float)  # type: ignore
         self.key_to_sizes: DefaultDict[str, int] = defaultdict(int)
-        self.probs: List[Probs] = []  # Danh sách lưu xác suất nếu cần
+        self.probs: List[Probs] = []
 
     def add_with_size(
             self, key: str, nll_sum: torch.Tensor, size: int,
     ) -> None:
         if configs.log_likelihood:
             assert key not in self.key_to_bits, f"{key} already exists"
+            # Divide by np.log(2) to convert from natural log to log base 2
             self.key_to_bits[key] = nll_sum / np.log(2)
             self.key_to_sizes[key] = size
 
@@ -61,29 +60,6 @@ class Bits:
             self.add(lm_probs.name, nll)
         if configs.collect_probs:
             self.probs.append((y_i, lm_probs, -1))
-
-    def save_probs_to_json(self, filenames: List[str], json_filename=configs.prob_save_path):
-        """Lưu tên ảnh và xác suất vào file JSON"""
-        data = []
-        if os.path.exists(json_filename):
-            with open(json_filename, "r") as file:
-                try:
-                    data = json.load(file)
-                except json.JSONDecodeError:
-                    data = []
-
-        for filename, (y_i, lm_probs, _) in zip(filenames, self.probs):
-            if lm_probs is not None:
-                probs = lm_probs.probs.cpu().detach().numpy().tolist()
-                data.append({"filename": filename, "probs": probs})
-
-        with open(json_filename, "w") as file:
-            json.dump(data, file, indent=4)
-
-        print(f"[DEBUG] Saved probabilities for {len(filenames)} images.")
-
-    def get_total_bpsp(self, inp_size: int) -> torch.Tensor:
-        return sum(self.key_to_bits.values()) / inp_size  # type: ignore
 
     def add_uniform(
             self,
@@ -149,7 +125,7 @@ class PixDecoder(nn.Module):
             x: torch.Tensor,
             ctx: torch.Tensor
     ) -> Generator[LogisticMixtureProbability, torch.Tensor,
-                   Tuple[torch.Tensor, torch.Tensor]]:        
+                   Tuple[torch.Tensor, torch.Tensor]]:
         raise NotImplementedError
 
     def forward(self,  # type: ignore
@@ -289,6 +265,7 @@ def group_2x2(
         x_even_height[:, :, :, 1:w:2],
         x_odd_height[:, :, :, 0:w:2],
         x_odd_height[:, :, :, 1:w:2])
+
 
 class Compressor(nn.Module):
     def __init__(self) -> None:
