@@ -50,6 +50,16 @@ class Bits:
     def get_total_bpsp(self, inp_size: int) -> torch.Tensor:
         return sum(self.key_to_bits.values()) / inp_size
 
+    def update(self, other: "Bits") -> "Bits":
+        """ Hợp nhất dữ liệu từ một object Bits khác """
+        assert len(self.get_keys() & other.get_keys()) == 0, \
+            f"{self.get_keys()} và {other.get_keys()} bị trùng."
+        self.key_to_bits.update(other.key_to_bits)
+        self.key_to_sizes.update(other.key_to_sizes)
+        self.probs += other.probs
+        return self
+
+
 
 class PixDecoder(nn.Module):
     """ Super-resolution based decoder for pixel-based factorization. """
