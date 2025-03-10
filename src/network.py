@@ -163,7 +163,7 @@ class Compressor(nn.Module):
         downsampled = data.average_downsamples(x)
         mode = "train" if self.training else "eval"
         bits = Bits()
-        bits.add_with_size(f"{mode}/codes_0", util.tensor_round(downsampled[-1]))
+        bits.add_with_size(f"{mode}/codes_0", util.tensor_round(downsampled[-1]), downsampled[-1].numel())
 
         ctx = 0.
         for dec, ctx_upsampler, x, y in zip(self.decs, self.ctx_upsamplers, downsampled[::-1], downsampled[-2::-1]):
