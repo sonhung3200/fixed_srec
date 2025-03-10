@@ -38,6 +38,9 @@ def save_collect_probs(probs, train_iter, save_path="collect_probs.json"):
                 "values": y_i.tolist()
             })
 
+    # Giới hạn số lượng collect_probs lưu lại (chỉ lấy 100 phần tử đầu tiên)
+    formatted_probs = formatted_probs[:100]
+
     save_data = {
         "train_iter": train_iter,
         "collected_probs": formatted_probs
@@ -53,6 +56,7 @@ def save_collect_probs(probs, train_iter, save_path="collect_probs.json"):
 
     with open(save_path, "w") as file:
         json.dump(existing_data, file, indent=4)
+
 
 
 def plot_bpsp(
