@@ -5,12 +5,10 @@ from typing import List
 import click
 import numpy as np
 import torch
-import torch.distributed as dist
 import torchvision.transforms as T
 from PIL import ImageFile
 from torch import nn, optim
 from torch.utils import data, tensorboard
-from torch.utils.data.distributed import DistributedSampler  # Multi-GPU
 
 from src import configs
 from src import data as lc_data
@@ -19,7 +17,7 @@ from src.l3c import timer
 
 
 def setup_device():
-    """ Thiết lập GPU, chỉ dùng DataParallel thay vì DistributedSampler """
+    """ Thiết lập GPU, sử dụng DataParallel nếu có nhiều GPU """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_gpus = torch.cuda.device_count()
     
@@ -125,7 +123,7 @@ def main(
     
     # 🔥 Nếu có nhiều GPU, sử dụng DataParallel
     if num_gpus > 1:
-        compressor = nn.parallel.DataParallel(compressor)
+        compressor = nn.DataParallel(compressor)
 
     compressor = compressor.to(device)  # Đưa model lên GPU
 
@@ -140,6 +138,7 @@ def main(
     else:
         raise NotImplementedError(gd)
 
+    # Setup DataLoader (Không dùng DistributedSampler)
     train_dataset = lc_data.ImageFolder(
         train_path,
         [filename.strip() for filename in train_file],
@@ -148,17 +147,13 @@ def main(
     )
 
     train_loader = data.DataLoader(
-    train_dataset, batch_size=batch, shuffle=True,  # ❌ Bỏ DistributedSampler
-    num_workers=workers, drop_last=True, pin_memory=True
+        train_dataset, batch_size=batch, shuffle=True,  # ✅ Không dùng sampler
+        num_workers=workers, drop_last=True, pin_memory=True
     )
-
 
     # Training loop
     train_iter = 0
     for epoch in range(epochs):
-        if num_gpus > 1:
-            train_sampler.set_epoch(epoch)  # 🔥 Reset sampler mỗi epoch nếu có nhiều GPU
-
         with tensorboard.SummaryWriter(plot) as plotter:
             for batch_idx, (_, inputs) in enumerate(train_loader):
                 train_iter += 1
