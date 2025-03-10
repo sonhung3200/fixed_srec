@@ -19,17 +19,13 @@ from src.l3c import timer
 
 
 def setup_device():
-    """ Thiết lập GPU và Distributed Training """
+    """ Thiết lập GPU, chỉ dùng DataParallel thay vì DistributedSampler """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_gpus = torch.cuda.device_count()
     
     print(f"✅ Available GPUs: {num_gpus}")
     for i in range(num_gpus):
         print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
-
-    if num_gpus > 1:
-        print("🔥 Initializing Distributed Training...")
-        dist.init_process_group(backend="nccl", init_method="env://")  # Dành cho multi-GPU
 
     return device, num_gpus
 
@@ -151,12 +147,11 @@ def main(
         T.Compose([T.RandomHorizontalFlip(), T.RandomCrop(crop)])
     )
 
-    # Setup DataLoader (🔥 Dùng DistributedSampler nếu multi-GPU)
-    train_sampler = DistributedSampler(train_dataset) if num_gpus > 1 else None
     train_loader = data.DataLoader(
-        train_dataset, batch_size=batch, sampler=train_sampler,
-        num_workers=workers, drop_last=True, pin_memory=True
+    train_dataset, batch_size=batch, shuffle=True,  # ❌ Bỏ DistributedSampler
+    num_workers=workers, drop_last=True, pin_memory=True
     )
+
 
     # Training loop
     train_iter = 0
