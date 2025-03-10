@@ -125,7 +125,9 @@ def evaluate(eval_loader, compressor, plotter, epoch):
               help="Size of image crops in training.")
 @click.option("--gd", type=click.Choice(["sgd", "adam", "rmsprop"]), default="adam",
               help="Type of gd to use.")
-def main(train_path, eval_path, train_file, eval_file, batch, epochs, lr, clip, plot_iters, plot):
+def main(train_path, eval_path, train_file, eval_file, batch, workers, plot, epochs, 
+         resblocks, n_feats, scale, load, lr, eval_iters, lr_epochs, plot_iters, 
+         K, clip, crop, gd):
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     # Cấu hình logging và TensorBoard
