@@ -174,16 +174,23 @@ class Compressor(nn.Module):
             print(f"✅ Using {torch.cuda.device_count()} GPUs!")
             self.nets = nn.DataParallel(self.nets)
 
-    def forward(self, x: torch.Tensor) -> Bits:
-        x = x.cuda()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         downsampled = data.average_downsamples(x)
+        assert len(downsampled)-1 == len(self.decs), (
+            f"{len(downsampled)-1}, {len(self.decs)}")
+    
         mode = "train" if self.training else "eval"
         bits = Bits()
-        bits.add_with_size(f"{mode}/codes_0", util.tensor_round(downsampled[-1]), downsampled[-1].numel())
-
+        bits.add_uniform(f"{mode}/codes_0", util.tensor_round(downsampled[-1]))
+    
         ctx = 0.
-        for dec, ctx_upsampler, x, y in zip(self.decs, self.ctx_upsamplers, downsampled[::-1], downsampled[-2::-1]):
+        for dec, ctx_upsampler, x, y in zip(  # type: ignore
+                self.decs, self.ctx_upsamplers,
+                downsampled[::-1], downsampled[-2::-1]):
             ctx = ctx_upsampler(ctx)
             dec_bits, ctx = dec(x, util.tensor_round(y), ctx)
-            bits.update(dec_bits)
-        return bits
+            bits = bits.update(dec_bits)  # 🔥 Fix: Đảm bảo `update()` trả về `Bits`
+    
+        # 🔥 Trả về một tensor thay vì `Bits`
+        return torch.tensor(bits.get_total_bpsp(x.numel()), device=x.device)
+
