@@ -44,6 +44,9 @@ def train_loop(
 
     # Chạy model trên GPU
     bits = compressor(x)
+    if isinstance(bits, torch.Tensor):  # Nếu model đang chạy DataParallel
+        bits = bits[0]  # Lấy object Bits đầu tiên
+
 
     # Lưu probs cho từng ảnh trong batch
     for img_idx, (img, prob_data) in enumerate(bits.probs):
