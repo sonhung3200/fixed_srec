@@ -46,7 +46,16 @@ def train_loop(
 
     # ✅ Lưu `probs` vào file JSON
     batch_data = {}
-    for img_idx, (img, prob_data) in enumerate(bits.probs):
+    for img_idx, prob_tuple in enumerate(bits.probs):
+        print(f"DEBUG: prob_tuple {img_idx} = {prob_tuple}")  # Debug xem dữ liệu bị lỗi gì
+
+        if isinstance(prob_tuple, tuple) and len(prob_tuple) == 2:
+            img, prob_data = prob_tuple
+        elif isinstance(prob_tuple, tuple) and len(prob_tuple) > 2:
+            img, prob_data, *_ = prob_tuple  # Lấy 2 phần tử đầu tiên, bỏ phần còn lại
+        else:
+            raise ValueError(f"Unexpected prob_tuple format: {prob_tuple}")
+
         batch_data[f"img_{img_idx}"] = prob_data.cpu().tolist()
 
     json_filename = os.path.join(save_probs_path, f"train_iter_{train_iter}_batch_{batch_idx}.json")
@@ -66,6 +75,7 @@ def train_loop(
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
 
     return total_loss.item()
+
 
 
 @click.command()
