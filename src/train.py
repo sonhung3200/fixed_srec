@@ -86,15 +86,45 @@ def evaluate(eval_loader, compressor, plotter, epoch):
 
 
 @click.command()
-@click.option("--train-path", type=click.Path(exists=True), help="Path to training images.")
-@click.option("--eval-path", type=click.Path(exists=True), help="Path to eval images.")
-@click.option("--train-file", type=click.File("r"), help="File with training image names.")
-@click.option("--eval-file", type=click.File("r"), help="File with eval image names.")
-@click.option("--batch", type=int, default=16, help="Batch size.")
-@click.option("--epochs", type=int, default=50, help="Number of epochs.")
-@click.option("--lr", type=float, default=1e-4, help="Learning rate.")
-@click.option("--clip", type=float, default=0.5, help="Gradient clipping norm.")
-@click.option("--plot-iters", type=int, default=100, help="Plot every N iterations.")
+@click.option("--train-path", type=click.Path(exists=True),
+              help="path to directory of training images.")
+@click.option("--eval-path", type=click.Path(exists=True),
+              help="path to directory of eval images.")
+@click.option("--train-file", type=click.File("r"),
+              help="file for training image names.")
+@click.option("--eval-file", type=click.File("r"),
+              help="file for eval image names.")
+@click.option("--batch", type=int, help="Batch size for training.")
+@click.option("--workers", type=int, default=1,
+              help="Number of worker threads to use in dataloader.")
+@click.option("--plot", type=str,
+              help="path to store tensorboard run data/plots.")
+@click.option("--epochs", type=int, default=50, show_default=True,
+              help="Number of epochs to run.")
+@click.option("--resblocks", type=int, default=5, show_default=True,
+              help="Number of resblocks to use.")
+@click.option("--n-feats", type=int, default=64, show_default=True,
+              help="Size of feature vector/channel width.")
+@click.option("--scale", type=int, default=3, show_default=True,
+              help="Scale of downsampling")
+@click.option("--load", type=click.Path(exists=True), default="/dev/null",
+              help="Path to load model")
+@click.option("--lr", type=float, default=1e-4, help="Learning rate")
+@click.option("--eval-iters", type=int, default=0,
+              help="Number of train iterations per evaluation. "
+                   "If 0, then evaluate at the end of every epoch.")
+@click.option("--lr-epochs", type=int, default=1,
+              help="Number of epochs before multiplying learning rate by 0.75")
+@click.option("--plot-iters", type=int, default=1000,
+              help="Number of train iterations before plotting data")
+@click.option("--K", type=int, default=10,
+              help="Number of clusters in logistic mixture model.")
+@click.option("--clip", type=float, default=0.5,
+              help="Norm to clip by for gradient clipping.")
+@click.option("--crop", type=int, default=128,
+              help="Size of image crops in training.")
+@click.option("--gd", type=click.Choice(["sgd", "adam", "rmsprop"]), default="adam",
+              help="Type of gd to use.")
 def main(train_path, eval_path, train_file, eval_file, batch, epochs, lr, clip, plot_iters):
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
