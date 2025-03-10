@@ -125,12 +125,15 @@ def evaluate(eval_loader, compressor, plotter, epoch):
               help="Size of image crops in training.")
 @click.option("--gd", type=click.Choice(["sgd", "adam", "rmsprop"]), default="adam",
               help="Type of gd to use.")
-def main(train_path, eval_path, train_file, eval_file, batch, epochs, lr, clip, plot_iters):
+def main(train_path, eval_path, train_file, eval_file, batch, epochs, lr, clip, plot_iters, plot):
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     # Cấu hình logging và TensorBoard
     logging.info("🚀 Starting training...")
+    
+    configs.plot = plot  # ✅ Gán giá trị plot vào configs
     os.makedirs(configs.plot, exist_ok=True)
+    plotter = tensorboard.SummaryWriter(configs.plot)
 
     # Load dataset
     train_dataset = lc_data.ImageFolder(
@@ -150,7 +153,6 @@ def main(train_path, eval_path, train_file, eval_file, batch, epochs, lr, clip, 
     # Khởi tạo mô hình và optimizer
     compressor = network.Compressor().cuda()
     optimizer = optim.Adam(compressor.parameters(), lr=lr)
-    plotter = tensorboard.SummaryWriter(configs.plot)
 
     # Lặp qua các epoch
     for epoch in range(epochs):
@@ -168,6 +170,7 @@ def main(train_path, eval_path, train_file, eval_file, batch, epochs, lr, clip, 
             logging.info(f"🎯 New best model saved at epoch {epoch} with BPSP {eval_bpsp:.4f}")
 
     logging.info("🏁 Training complete!")
+
 
 
 if __name__ == "__main__":
