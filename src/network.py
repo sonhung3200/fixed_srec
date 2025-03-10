@@ -198,5 +198,5 @@ class Compressor(nn.Module):
             bits = bits.update(dec_bits)  # 🔥 Fix: Đảm bảo `update()` trả về `Bits`
     
         # 🔥 Trả về một tensor thay vì `Bits`
-        return torch.tensor(bits.get_total_bpsp(x.numel()), device=x.device)
+        return bits
 
