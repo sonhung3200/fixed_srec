@@ -111,6 +111,8 @@ def train_loop(
     grad_norm = nn.utils.clip_grad_norm_(compressor.parameters(), clip)
     optimizer.step()
 
+    print(f"🔄 Batch {train_iter}: BPSP = {total_bpsp.item():.4f}, Grad Norm = {grad_norm:.4f}, Loss = {total_loss.item():.4f}")
+
     # Nếu đây là batch cuối cùng của epoch, chỉ lưu 10 dòng cuối cùng
     if configs.collect_probs and is_last_batch:
         last_10_probs = bits.probs[-10:]  # Chỉ lấy 10 dòng cuối cùng
@@ -348,37 +350,32 @@ def main(
         eval_iters = len(train_loader)
 
     for epoch in range(starting_epoch, epochs):
-        total_batches = len(train_loader)  # Định nghĩa biến trước khi sử dụng
+        total_batches = len(train_loader)  
         print("\n===================================")
         print(f"🚀 Epoch {epoch + 1}/{epochs} starting...")
-        print(f"📦 Batch: {total_batches}")
+        print(f"📦 Total Batches: {total_batches}")
         print("===================================\n")
         
         with tensorboard.SummaryWriter(plot) as plotter:
-            # input: List[Tensor], downsampled images.
-            # sizes: N scale 4
-            num_batches = len(train_loader)  # Số lượng batch tổng cộng
-            batch_counter = 0  # Biến đếm batch đã chạy
+            num_batches = len(train_loader)
+            batch_counter = 0  
                         
             for _, inputs in train_loader:
                 train_iter += 1
                 batch_size = inputs[0].shape[0]
+                batch_counter += 1  
 
-                batch_counter += 1  # Cập nhật số batch đã xử lý
-
-                is_last_batch = (batch_counter == num_batches)  # Nếu là batch cuối cùng
+                is_last_batch = (batch_counter == num_batches)  
 
                 train_loop(inputs, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
-                # Increment dataset_index before checkpointing because
-                # dataset_index is starting index of index of the FIRST
-                # unseen piece of data.
+
                 dataset_index += batch_size
 
                 if train_iter % plot_iters == 0:
                     plotter.add_scalar(
                         "train/lr",
-                        lr_scheduler.get_lr()[0],  # type: ignore
+                        lr_scheduler.get_last_lr()[0],  
                         train_iter)
                     save(compressor, train_sampler.indices, dataset_index,
                          epoch, train_iter, plot, "train.pth")
@@ -388,19 +385,22 @@ def main(
                         eval_loader, compressor, train_iter,
                         plotter, epoch)
 
-            lr_scheduler.step()  # type: ignore
+            lr_scheduler.step()  
             dataset_index = 0
+
         print("\n===================================")
         print(f"✅ Epoch {epoch + 1}/{epochs} done!")
+        print(f"📊 Last Train Iter: {train_iter}")
+        print(f"📉 Latest BPSP: {configs.best_bpsp:.4f}")  
+        print(f"📌 Learning Rate: {lr_scheduler.get_last_lr()[0]:.6f}")  
         print("===================================\n")
-            
 
     with tensorboard.SummaryWriter(plot) as plotter:
         run_eval(eval_loader, compressor, train_iter,
                  plotter, epochs)
     save(compressor, train_sampler.indices, train_sampler.index,
          epochs, train_iter, plot, "train.pth")
-    print("Training done!")
+    print("🎉 Training done!")
 
 
 if __name__ == "__main__":
