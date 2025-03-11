@@ -95,9 +95,16 @@ def train_loop(
     compressor.train()
     optimizer.zero_grad()
 
-    # 🔥 Fix lỗi tuple chứa tên file bằng cách lấy đúng tensor hình ảnh
-    if isinstance(x, tuple):
+    # 🔥 Debug dữ liệu đầu vào
+    print(f"🚀 Debug: type(x) = {type(x)}, len(x) = {len(x) if isinstance(x, (list, tuple)) else 'N/A'}")
+
+    # Kiểm tra định dạng của x
+    if isinstance(x, (list, tuple)) and len(x) == 2:
         filename, x = x  # Lấy tensor từ tuple
+    elif isinstance(x, torch.Tensor):
+        filename = None  # Không có tên file, chỉ có tensor
+    else:
+        raise ValueError(f"Unexpected format of x: {type(x)} -> {x}")
 
     inp_size = np.prod(x.size())
     x = x.cuda()
@@ -116,6 +123,7 @@ def train_loop(
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
         plotter.add_scalar("train/grad_norm", grad_norm, train_iter)
         plot_bpsp(plotter, bits, inp_size, train_iter)
+
 
 
 
