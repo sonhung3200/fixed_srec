@@ -111,7 +111,7 @@ def train_loop(
     grad_norm = nn.utils.clip_grad_norm_(compressor.parameters(), clip)
     optimizer.step()
 
-    print(f"🔄 Batch {train_iter}: BPSP = {total_bpsp.item():.4f}, Grad Norm = {grad_norm:.4f}, Loss = {total_loss.item():.4f}")
+    print(f"🔄 Batch {train_iter}: Grad Norm = {grad_norm:.4f}, Loss = {total_loss.item():.4f}")
 
     # Nếu đây là batch cuối cùng của epoch, chỉ lưu 10 dòng cuối cùng
     if configs.collect_probs and is_last_batch:
