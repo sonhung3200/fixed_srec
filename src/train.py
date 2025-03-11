@@ -345,7 +345,7 @@ def main(
         with tensorboard.SummaryWriter(plot) as plotter:
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
-            for batch_idx, inputs in train_loader:
+            for batch_idx, (inputs, _) in enumerate(train_loader):
                 if isinstance(batch_idx, tuple):
                     batch_idx = batch_idx[0]  # Lấy phần tử đầu tiên nếu batch_idx là tuple
                 if isinstance(batch_idx, str) and batch_idx.isdigit():
@@ -359,7 +359,7 @@ def main(
                 is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
 
                 # Hiển thị log sau mỗi batch
-                print(f"🔄 Epoch {int(epoch) + 1} | Batch {batch_idx + 1}/{int(total_batches)} | Train Iter: {int(train_iter)}")
+                print(f"🔄 Epoch {epoch + 1} | Batch {batch_idx + 1}/{total_batches} | Train Iter: {train_iter}")
 
                 train_loop(inputs, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
