@@ -346,6 +346,8 @@ def main(
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
             for batch_idx, inputs in train_loader:
+                if isinstance(batch_idx, tuple):
+                    batch_idx = batch_idx[0]  # Lấy giá trị nguyên từ tuple nếu cần
                 train_iter += 1
                 batch_size = inputs[0].shape[0]
 
