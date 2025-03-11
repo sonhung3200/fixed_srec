@@ -94,6 +94,11 @@ def train_loop(
 ) -> None:
     compressor.train()
     optimizer.zero_grad()
+
+    # 🔥 Fix lỗi tuple bằng cách lấy phần tử đầu tiên nếu cần
+    if isinstance(x, tuple):
+        x = x[0]
+
     inp_size = np.prod(x.size())
     x = x.cuda()
     bits = compressor(x)
@@ -111,6 +116,7 @@ def train_loop(
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
         plotter.add_scalar("train/grad_norm", grad_norm, train_iter)
         plot_bpsp(plotter, bits, inp_size, train_iter)
+
 
 
 def run_eval(
