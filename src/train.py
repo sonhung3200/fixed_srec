@@ -361,8 +361,15 @@ def main(
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
             for batch_idx, inputs in enumerate(train_loader):
-                images = [img_tensor for (_, img_tensor) in inputs]  # Chỉ lấy tensor ảnh
-                images = torch.stack(images)  # Chuyển danh sách tensor thành batch tensor
+                if isinstance(inputs, tuple) and len(inputs) > 1:
+                    images = inputs[1]  # Lấy tensor ảnh (bỏ qua tên file hoặc các thông tin khác)
+                elif isinstance(inputs, list):
+                    images = [img_tensor for img_tensor in inputs]  # Nếu là list, lấy từng tensor
+                else:
+                    raise ValueError(f"🚨 Unexpected format: {type(inputs)} -> {inputs}")
+            
+                images = torch.stack(images) if isinstance(images, list) else images
+
                 if isinstance(batch_idx, tuple):
                     batch_idx = batch_idx[0]  # Lấy phần tử đầu tiên nếu batch_idx là tuple
                 if isinstance(batch_idx, str) and batch_idx.isdigit():
