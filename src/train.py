@@ -345,7 +345,7 @@ def main(
         with tensorboard.SummaryWriter(plot) as plotter:
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
-            for _, inputs in train_loader:
+            for batch_idx, inputs in enumerate(train_loader):
                 train_iter += 1
                 batch_size = inputs[0].shape[0]
 
