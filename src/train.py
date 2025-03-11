@@ -238,12 +238,12 @@ def main(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print("===================================")
-    print(f"🔥 Bắt đầu training!")
-    print(f"🔄 Tổng số epochs: {epochs}")
+    print(f"🔥 Starting!")
+    print(f"🔄 Epochs: {epochs}")
     print(f"📦 Batch size: {batch}")
     print(f"📉 Learning rate: {lr}")
     print(f"📌 Optimizer: {gd}")
-    print(f"🖥️ Đang chạy trên: {'GPU' if device.type == 'cuda' else 'CPU'}")
+    print(f"🖥️ On: {'GPU' if device.type == 'cuda' else 'CPU'}")
     print("===================================")
     
 
@@ -336,12 +336,12 @@ def main(
         eval_iters = len(train_loader)
 
     for epoch in range(starting_epoch, epochs):
+        total_batches = len(train_loader)  # Định nghĩa biến trước khi sử dụng
         print("\n===================================")
         print(f"🚀 Epoch {epoch + 1}/{epochs} starting...")
         print(f"📦 Batch: {total_batches}")
         print("===================================\n")
         
-        total_batches = len(train_loader) 
         with tensorboard.SummaryWriter(plot) as plotter:
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
