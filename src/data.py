@@ -82,7 +82,9 @@ class ImageFolder(data.Dataset):
         elif pic.mode == '1':
             img = 255 * torch.from_numpy(np.array(pic, np.uint8, copy=False))
         else:
-            img = torch.ByteStorage.from_buffer(pic.tobytes()).untyped_storage()  # type: ignore
+            img = torch.ByteTensor(
+            torch.tensor(np.array(pic), dtype=torch.uint8)  # fixed
+        )
         # PIL image mode: L, P, I, F, RGB, YCbCr, RGBA, CMYK
         if pic.mode == 'YCbCr':
             nchannel = 3
