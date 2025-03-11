@@ -90,7 +90,7 @@ def train_loop(
         x: torch.Tensor, compressor: nn.Module,
         optimizer: optim.Optimizer,
         train_iter: int, plotter: tensorboard.SummaryWriter,
-        plot_iters: int, clip: float,
+        plot_iters: int, clip: float, is_last_batch: bool
 ) -> None:
     compressor.train()
     optimizer.zero_grad()
@@ -102,9 +102,10 @@ def train_loop(
     grad_norm = nn.utils.clip_grad_norm_(compressor.parameters(), clip)
     optimizer.step()
 
-    # Save collect_probs if enabled
-    if configs.collect_probs:
-        save_collect_probs(bits.probs, train_iter)
+    # Nếu đây là batch cuối cùng của epoch, chỉ lưu 10 dòng cuối cùng
+    if configs.collect_probs and is_last_batch:
+        last_10_probs = bits.probs[-10:]  # Chỉ lấy 10 dòng cuối cùng
+        save_collect_probs(last_10_probs, train_iter)
 
     if train_iter % plot_iters == 0:
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
@@ -234,6 +235,18 @@ def main(
 ) -> None:
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    print("===================================")
+    print(f"🔥 Bắt đầu training!")
+    print(f"🔄 Tổng số epochs: {epochs}")
+    print(f"📦 Batch size: {batch}")
+    print(f"📉 Learning rate: {lr}")
+    print(f"📌 Optimizer: {gd}")
+    print(f"🖥️ Đang chạy trên: {'GPU' if device.type == 'cuda' else 'CPU'}")
+    print("===================================")
+    
+
     configs.n_feats = n_feats
     configs.scale = scale
     configs.resblocks = resblocks
@@ -258,7 +271,7 @@ def main(
     else:
         checkpoint = {}
 
-    compressor = network.Compressor()
+    compressor = network.Compressor().to(device)
     if checkpoint:
         compressor.nets.load_state_dict(checkpoint["nets"])
     compressor = compressor.cuda()
@@ -323,6 +336,12 @@ def main(
         eval_iters = len(train_loader)
 
     for epoch in range(starting_epoch, epochs):
+        print("\n===================================")
+        print(f"🚀 Epoch {epoch + 1}/{epochs} starting...")
+        print(f"📦 Batch: {total_batches}")
+        print("===================================\n")
+        
+        total_batches = len(train_loader) 
         with tensorboard.SummaryWriter(plot) as plotter:
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
@@ -330,8 +349,14 @@ def main(
                 train_iter += 1
                 batch_size = inputs[0].shape[0]
 
+                is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
+
+                # Hiển thị log sau mỗi batch
+                print(f"🔄 Epoch {epoch + 1} | Batch {batch_idx + 1}/{total_batches} | Train Iter: {train_iter}")
+
+
                 train_loop(inputs, compressor, optimizer, train_iter,
-                           plotter, plot_iters, clip)
+                       plotter, plot_iters, clip, is_last_batch)
                 # Increment dataset_index before checkpointing because
                 # dataset_index is starting index of index of the FIRST
                 # unseen piece of data.
@@ -352,13 +377,17 @@ def main(
 
             lr_scheduler.step()  # type: ignore
             dataset_index = 0
+        print("\n===================================")
+        print(f"✅ Epoch {epoch + 1}/{epochs} done!")
+        print("===================================\n")
+            
 
     with tensorboard.SummaryWriter(plot) as plotter:
         run_eval(eval_loader, compressor, train_iter,
                  plotter, epochs)
     save(compressor, train_sampler.indices, train_sampler.index,
          epochs, train_iter, plot, "train.pth")
-    print("training done")
+    print("Training done!")
 
 
 if __name__ == "__main__":
