@@ -95,9 +95,6 @@ def train_loop(
     compressor.train()
     optimizer.zero_grad()
 
-    # 🔥 Debug dữ liệu đầu vào
-    print(f"🚀 Debug: type(x) = {type(x)}, len(x) = {len(x) if isinstance(x, (list, tuple)) else 'N/A'}")
-
     # Kiểm tra định dạng của x
     if isinstance(x, (list, tuple)) and len(x) == 2:
         filename, x = x  # Lấy tensor từ tuple
@@ -370,9 +367,6 @@ def main(
                 batch_counter += 1  # Cập nhật số batch đã xử lý
 
                 is_last_batch = (batch_counter == num_batches)  # Nếu là batch cuối cùng
-
-                # Hiển thị log sau mỗi batch
-                print(f"🔄 Epoch {epoch+1} | Batch {batch_counter}/{num_batches} | Train Iter: {train_iter} | Last Batch: {is_last_batch}")
 
                 train_loop(inputs, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
