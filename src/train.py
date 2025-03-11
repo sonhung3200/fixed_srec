@@ -353,7 +353,7 @@ def main(
                 else:
                     x = inputs  # Nếu chỉ có dữ liệu
 
-    batch_size = x.shape[0]
+                batch_size = x.shape[0]
 
                 is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
 
