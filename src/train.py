@@ -345,15 +345,9 @@ def main(
         with tensorboard.SummaryWriter(plot) as plotter:
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
-            for batch_idx, inputs in enumerate(train_loader):
+            for batch_idx, inputs in train_loader:
                 train_iter += 1
-                # Lấy danh sách filenames và tensors riêng biệt
-                filenames, tensors = zip(*batch)  
-            
-                # Chuyển danh sách tensor thành một tensor stack
-                x = torch.stack(tensors).cuda()  # Kết hợp các ảnh thành tensor batch
-            
-                batch_size = x.shape[0]  # Lấy batch_size từ tensor đã gộp
+                batch_size = inputs[0].shape[0]
 
                 is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
 
