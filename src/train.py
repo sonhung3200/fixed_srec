@@ -374,7 +374,7 @@ def main(
                 # Hiển thị log sau mỗi batch
                 print(f"🔄 Epoch {epoch+1} | Batch {batch_counter}/{num_batches} | Train Iter: {train_iter} | Last Batch: {is_last_batch}")
 
-                train_loop(images, compressor, optimizer, train_iter,
+                train_loop(inputs, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
                 # Increment dataset_index before checkpointing because
                 # dataset_index is starting index of index of the FIRST
