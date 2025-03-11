@@ -347,7 +347,13 @@ def main(
             # sizes: N scale 4
             for batch_idx, inputs in enumerate(train_loader):
                 train_iter += 1
-                batch_size = inputs[0].shape[0]
+                # Kiểm tra xem inputs có phải tuple không
+                if isinstance(inputs, tuple):
+                    x, y = inputs  # Giả định dataset trả về (dữ liệu, nhãn)
+                else:
+                    x = inputs  # Nếu chỉ có dữ liệu
+
+    batch_size = x.shape[0]
 
                 is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
 
