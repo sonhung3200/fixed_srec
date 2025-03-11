@@ -347,14 +347,19 @@ def main(
             # sizes: N scale 4
             for batch_idx, inputs in train_loader:
                 if isinstance(batch_idx, tuple):
-                    batch_idx = batch_idx[0]  # Lấy giá trị nguyên từ tuple nếu cần
-                train_iter += 1
-                batch_size = inputs[0].shape[0]
+                    batch_idx = batch_idx[0]  # Lấy phần tử đầu tiên nếu batch_idx là tuple
+                if isinstance(batch_idx, str) and batch_idx.isdigit():
+                    batch_idx = int(batch_idx)  # Chỉ ép kiểu nếu là số
+                elif isinstance(batch_idx, int):
+                    pass  # Đã là số nguyên, giữ nguyên
+                else:
+                    raise ValueError(f"batch_idx không hợp lệ: {batch_idx}")  # Báo lỗi nếu giá trị không hợp lệ
+
 
                 is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
 
                 # Hiển thị log sau mỗi batch
-                print(f"🔄 Epoch {int(epoch) + 1} | Batch {int(batch_idx[0]) + 1}/{int(total_batches)} | Train Iter: {int(train_iter)}")
+                print(f"🔄 Epoch {int(epoch) + 1} | Batch {batch_idx + 1}/{int(total_batches)} | Train Iter: {int(train_iter)}")
 
                 train_loop(inputs, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
