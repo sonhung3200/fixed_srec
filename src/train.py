@@ -111,7 +111,11 @@ def train_loop(
     grad_norm = nn.utils.clip_grad_norm_(compressor.parameters(), clip)
     optimizer.step()
 
-    print(f"🔄 Batch {train_iter}: Grad Norm = {grad_norm:.4f}, Loss = {total_loss.item():.4f}")
+    # In log đẹp hơn
+    if train_iter % 10 == 0 or is_last_batch:
+        print(f"🔄 [Iteration {train_iter:5d}] | "
+              f"📉 Loss: {total_loss.item():.6f} | "
+              f"⚡ Grad Norm: {grad_norm:.4f}")
 
     # Nếu đây là batch cuối cùng của epoch, chỉ lưu 10 dòng cuối cùng
     if configs.collect_probs and is_last_batch:
@@ -119,6 +123,13 @@ def train_loop(
         save_collect_probs(last_10_probs, train_iter)
 
     if train_iter % plot_iters == 0:
+        print("\n🚀 Updating Training Progress 🚀")
+        print("=" * 50)
+        print(f"📊 Iteration:       {train_iter}")
+        print(f"📉 Train Loss:      {total_loss.item():.6f}")
+        print(f"⚡ Grad Norm:       {grad_norm:.4f}")
+        print(f"📌 Learning Rate:   {optimizer.param_groups[0]['lr']:.6f}")
+        print("=" * 50)
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
         plotter.add_scalar("train/grad_norm", grad_norm, train_iter)
         plot_bpsp(plotter, bits, inp_size, train_iter)
@@ -135,35 +146,55 @@ def run_eval(
     """ Runs entire eval epoch. """
     time_accumulator = timer.TimeAccumulator()
     compressor.eval()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    compressor.to(device)  # Chắc chắn mô hình đang trên GPU
+
     inp_size = 0
+    bits_keeper = network.Bits()
+
+    print("\n🔎 Running Evaluation...")
+    print("=" * 50)
 
     with torch.no_grad():
-        # BitsKeeper is used to aggregates bits from all eval iterations.
-        bits_keeper = network.Bits()
-        for _, x in eval_loader:
+        for batch_idx, (_, x) in enumerate(eval_loader):
             inp_size += np.prod(x.size())
             with time_accumulator.execute():
-                x = x.cuda()
+                x = x.to(device)  # Chuyển dữ liệu lên GPU
                 bits = compressor(x)
             bits_keeper.add_bits(bits)
 
-        total_bpsp = bits_keeper.get_total_bpsp(inp_size)
+            # Hiển thị progress
+            if batch_idx % 10 == 0 or batch_idx == len(eval_loader) - 1:
+                print(f"📊 Processing batch {batch_idx+1}/{len(eval_loader)}...")
 
-        eval_bpsp = total_bpsp.item()
-        print(f"Iteration {train_iter} bpsp: {total_bpsp}")
-        plotter.add_scalar(
-            "eval/bpsp", eval_bpsp, train_iter)
-        plotter.add_scalar(
-            "eval/batch_time", time_accumulator.mean_time_spent(), train_iter)
-        plot_bpsp(plotter, bits_keeper, inp_size, train_iter)
+    total_bpsp = bits_keeper.get_total_bpsp(inp_size).item()
+    avg_time = time_accumulator.mean_time_spent()
 
-        if configs.best_bpsp > eval_bpsp:
-            configs.best_bpsp = eval_bpsp
-            torch.save(
-                {"nets": compressor.nets.state_dict(),  # type: ignore
-                 "best_bpsp": configs.best_bpsp,
-                 "epoch": epoch},
-                os.path.join(configs.plot, "best.pth"))
+    # Cập nhật giá trị `best_bpsp` nếu cần
+    is_best = total_bpsp < configs.best_bpsp
+    if is_best:
+        configs.best_bpsp = total_bpsp
+        torch.save(
+            {"nets": compressor.nets.state_dict(),
+             "best_bpsp": configs.best_bpsp,
+             "epoch": epoch},
+            os.path.join(configs.plot, "best.pth"))
+
+    # In kết quả đánh giá dưới dạng bảng dễ nhìn
+    print("\n📊 Evaluation Results")
+    print("=" * 50)
+    print(f"🔢 Iteration:      {train_iter}")
+    print(f"📉 Current BPSP:   {total_bpsp:.6f}")
+    print(f"🏆 Best BPSP:      {configs.best_bpsp:.6f} {'(Updated ✅)' if is_best else ''}")
+    print(f"⏳ Avg Batch Time: {avg_time:.4f} sec")
+    print("=" * 50)
+
+    # Ghi kết quả vào TensorBoard
+    plotter.add_scalar("eval/bpsp", total_bpsp, train_iter)
+    plotter.add_scalar("eval/batch_time", avg_time, train_iter)
+    plot_bpsp(plotter, bits_keeper, inp_size, train_iter)
+
 
 
 def save(compressor: network.Compressor,
