@@ -360,30 +360,19 @@ def main(
         with tensorboard.SummaryWriter(plot) as plotter:
             # input: List[Tensor], downsampled images.
             # sizes: N scale 4
-            for batch_idx, inputs in enumerate(train_loader):
-                if isinstance(inputs, tuple) and len(inputs) > 1:
-                    images = inputs[1]  # Lấy tensor ảnh (bỏ qua tên file hoặc các thông tin khác)
-                elif isinstance(inputs, list):
-                    images = [img_tensor for img_tensor in inputs]  # Nếu là list, lấy từng tensor
-                else:
-                    raise ValueError(f"🚨 Unexpected format: {type(inputs)} -> {inputs}")
-            
-                images = torch.stack(images) if isinstance(images, list) else images
+            num_batches = len(train_loader)  # Số lượng batch tổng cộng
+            batch_counter = 0  # Biến đếm batch đã chạy
+                        
+            for _, inputs in train_loader:
+                train_iter += 1
+                batch_size = inputs[0].shape[0]
 
-                if isinstance(batch_idx, tuple):
-                    batch_idx = batch_idx[0]  # Lấy phần tử đầu tiên nếu batch_idx là tuple
-                if isinstance(batch_idx, str) and batch_idx.isdigit():
-                    batch_idx = int(batch_idx)  # Chỉ ép kiểu nếu là số
-                elif isinstance(batch_idx, int):
-                    pass  # Đã là số nguyên, giữ nguyên
-                else:
-                    raise ValueError(f"batch_idx không hợp lệ: {batch_idx}")  # Báo lỗi nếu giá trị không hợp lệ
+                batch_counter += 1  # Cập nhật số batch đã xử lý
 
-
-                is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
+                is_last_batch = (batch_counter == num_batches)  # Nếu là batch cuối cùng
 
                 # Hiển thị log sau mỗi batch
-                print(f"🔄 Epoch {epoch + 1} | Batch {batch_idx + 1}/{total_batches} | Train Iter: {train_iter}")
+                print(f"🔄 Epoch {epoch+1} | Batch {batch_counter}/{num_batches} | Train Iter: {train_iter} | Last Batch: {is_last_batch}")
 
                 train_loop(images, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
