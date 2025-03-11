@@ -95,9 +95,9 @@ def train_loop(
     compressor.train()
     optimizer.zero_grad()
 
-    # 🔥 Fix lỗi tuple bằng cách lấy phần tử đầu tiên nếu cần
+    # 🔥 Fix lỗi tuple chứa tên file bằng cách lấy đúng tensor hình ảnh
     if isinstance(x, tuple):
-        x = x[0]
+        filename, x = x  # Lấy tensor từ tuple
 
     inp_size = np.prod(x.size())
     x = x.cuda()
@@ -116,6 +116,7 @@ def train_loop(
         plotter.add_scalar("train/bpsp", total_loss.item(), train_iter)
         plotter.add_scalar("train/grad_norm", grad_norm, train_iter)
         plot_bpsp(plotter, bits, inp_size, train_iter)
+
 
 
 
