@@ -112,7 +112,7 @@ def train_loop(
     optimizer.step()
 
     # In log đẹp hơn
-    if train_iter % 10 == 0 or is_last_batch:
+    if train_iter % 100 == 0 or is_last_batch:
         print(f"🔄 [Iteration {train_iter:5d}] | "
               f"📉 Loss: {total_loss.item():.6f} | "
               f"⚡ Grad Norm: {grad_norm:.4f}")
@@ -165,7 +165,7 @@ def run_eval(
             bits_keeper.add_bits(bits)
 
             # Hiển thị progress
-            if batch_idx % 10 == 0 or batch_idx == len(eval_loader) - 1:
+            if batch_idx % 1000 == 0 or batch_idx == len(eval_loader) - 1:
                 print(f"📊 Processing batch {batch_idx+1}/{len(eval_loader)}...")
 
     total_bpsp = bits_keeper.get_total_bpsp(inp_size).item()
