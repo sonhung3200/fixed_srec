@@ -354,8 +354,7 @@ def main(
                 is_last_batch = (batch_idx == total_batches - 1)  # Kiểm tra batch cuối
 
                 # Hiển thị log sau mỗi batch
-                print(f"🔄 Epoch {epoch + 1} | Batch {batch_idx + 1}/{total_batches} | Train Iter: {train_iter}")
-
+                print(f"🔄 Epoch {int(epoch) + 1} | Batch {int(batch_idx[0]) + 1}/{int(total_batches)} | Train Iter: {int(train_iter)}")
 
                 train_loop(inputs, compressor, optimizer, train_iter,
                        plotter, plot_iters, clip, is_last_batch)
