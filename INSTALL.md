@@ -34,6 +34,8 @@ Note that `-v [directory on disk]:[directory in container]` mounts SReC director
 
 Now, you cann install all the dependencies besides torchac.
 ```
+apt update && apt install -y build-essential python3-dev libssl-dev zlib1g-dev
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
